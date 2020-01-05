@@ -11,14 +11,27 @@ import (
 	"github.com/PuerkitoBio/goquery"
 )
 
-// freeProxy Url
-const freeProxy = "https://free-proxy-list.net/"
-const bin = "https://www.google.com/"
+type config struct {
+	PingServer             string
+	proxyWebpage           string
+	TickMinuteDuration     time.Duration
+	numberAvailableProxies int
+	Verbose                int
+}
+
+// Config configuration
+var Config = &config{
+	proxyWebpage:           "https://free-proxy-list.net/",
+	PingServer:             "https://www.google.com/",
+	TickMinuteDuration:     3,
+	numberAvailableProxies: 30,
+	Verbose:                1,
+}
 
 // SkipProxies contains not working proxies rip
 var SkipProxies = []string{}
 
-var availableProxies = make(chan *Proxy, 200)
+var availableProxies = make(chan *Proxy, Config.numberAvailableProxies)
 var banProxy = make(chan string)
 
 // Proxy handle proxy things
@@ -39,7 +52,7 @@ func (p *Proxy) Ban() {
 
 // ProxyStart start channels
 func ProxyStart() {
-	ticker := time.NewTicker(3 * time.Minute)
+	ticker := time.NewTicker(Config.TickMinuteDuration * time.Minute)
 	go getProxy()
 
 	go func() {
@@ -60,10 +73,12 @@ func GetClient() *Proxy {
 }
 
 func getProxy() {
-	log.Printf("Get new proxies")
-	response, errGet := http.Get(freeProxy)
+	if Config.Verbose > 0 {
+		log.Println("Get new proxies")
+	}
+	response, errGet := http.Get(Config.proxyWebpage)
 	if errGet != nil {
-		fmt.Println("Error on get proxy")
+		log.Println("Error on get proxy")
 		return
 	}
 
@@ -95,11 +110,13 @@ func basicTestProxy(p string) {
 	}
 	proxy.Client = &http.Client{Transport: &http.Transport{Proxy: http.ProxyURL(proxyURL)}}
 
-	_, errHTTP := proxy.Client.Get(bin)
+	_, errHTTP := proxy.Client.Get(Config.PingServer)
 	if errHTTP != nil {
 		proxy.Ban()
 		return
 	}
-	// log.Println("Good proxy", proxy.Info)
+	if Config.Verbose > 2 {
+		log.Println("Good proxy", proxy.Info)
+	}
 	availableProxies <- &proxy
 }
