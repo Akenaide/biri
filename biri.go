@@ -33,6 +33,7 @@ var SkipProxies = []string{}
 
 var availableProxies = make(chan *Proxy, Config.numberAvailableProxies)
 var banProxy = make(chan string)
+var done = make(chan bool)
 
 // Proxy handle proxy things
 type Proxy struct {
@@ -62,6 +63,9 @@ func ProxyStart() {
 				SkipProxies = append(SkipProxies, skip)
 			case <-ticker.C:
 				go getProxy()
+			case <-done:
+				ticker.Stop()
+				return
 			}
 		}
 	}()
@@ -119,4 +123,9 @@ func basicTestProxy(p string) {
 		log.Println("Good proxy", proxy.Info)
 	}
 	availableProxies <- &proxy
+}
+
+// Done stop ticker and channels
+func Done() {
+	done <- true
 }
