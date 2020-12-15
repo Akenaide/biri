@@ -43,7 +43,9 @@ type Proxy struct {
 
 // Readd good proxy
 func (p *Proxy) Readd() {
-	availableProxies <- p
+	go func() {
+		availableProxies <- p
+	}()
 }
 
 // Ban proxy
