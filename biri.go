@@ -95,15 +95,18 @@ func getProxy() {
 
 	query.Find("table tr").Each(func(_ int, proxyLi *goquery.Selection) {
 		if strings.Contains(proxyLi.Text(), "elite proxy") {
-			ip := proxyLi.Children().First()
-			res := fmt.Sprintf("%v:%v", ip.Text(), ip.Next().Text())
+			if proxyLi.Children().Filter("td.hx").Text() == "yes" {
 
-			for _, val := range SkipProxies {
-				if res == val {
-					return
+				ip := proxyLi.Children().First()
+				res := fmt.Sprintf("%v:%v", ip.Text(), ip.Next().Text())
+
+				for _, val := range SkipProxies {
+					if res == val {
+						return
+					}
 				}
+				go basicTestProxy(res)
 			}
-			go basicTestProxy(res)
 		}
 	})
 }
