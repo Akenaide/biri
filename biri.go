@@ -113,11 +113,16 @@ func getProxy() {
 
 func basicTestProxy(p string) {
 	proxy := Proxy{Info: p}
+	timeoOut := 30
 	proxyURL, err := url.Parse(fmt.Sprintf("http://%v", proxy.Info))
 	if err != nil {
 		log.Println("Error in parse url")
 	}
-	proxy.Client = &http.Client{Transport: &http.Transport{Proxy: http.ProxyURL(proxyURL)}}
+	proxy.Client = &http.Client{Transport: &http.Transport{
+		Proxy: http.ProxyURL(proxyURL),
+	},
+		Timeout: time.Duration(timeoOut) * time.Second,
+	}
 
 	_, errHTTP := proxy.Client.Get(Config.PingServer)
 	if errHTTP != nil {
