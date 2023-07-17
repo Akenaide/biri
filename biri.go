@@ -1,6 +1,7 @@
 package biri
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"math/rand"
@@ -36,6 +37,7 @@ var availableProxies = make(chan *Proxy, Config.numberAvailableProxies)
 var reAddedProxies = []Proxy{}
 var banProxy = make(chan string)
 var done = make(chan bool)
+var timeout = 10
 
 // Proxy handle proxy things
 type Proxy struct {
@@ -94,11 +96,15 @@ func getProxy() {
 	if Config.Verbose > 0 {
 		log.Println("Get new proxies")
 	}
+	_, cancel := context.WithTimeout(context.Background(), time.Duration(timeout))
+	defer cancel()
+
 	response, errGet := http.Get(Config.proxyWebpage)
 	if errGet != nil {
 		log.Println("Error on get proxy")
 		return
 	}
+	defer response.Body.Close()
 
 	query, errParse := goquery.NewDocumentFromReader(response.Body)
 	if errParse != nil {
@@ -125,7 +131,6 @@ func getProxy() {
 
 func basicTestProxy(p string) {
 	proxy := Proxy{Info: p}
-	timeoOut := 30
 	proxyURL, err := url.Parse(fmt.Sprintf("http://%v", proxy.Info))
 	if err != nil {
 		log.Println("Error in parse url")
@@ -133,7 +138,7 @@ func basicTestProxy(p string) {
 	proxy.Client = &http.Client{Transport: &http.Transport{
 		Proxy: http.ProxyURL(proxyURL),
 	},
-		Timeout: time.Duration(timeoOut) * time.Second,
+		Timeout: time.Duration(timeout) * time.Second,
 	}
 
 	_, errHTTP := proxy.Client.Get(Config.PingServer)
