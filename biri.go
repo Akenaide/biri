@@ -47,6 +47,7 @@ type Proxy struct {
 
 // Readd good proxy
 func (p *Proxy) Readd() {
+	reAddedProxies = append(reAddedProxies, *p)
 	go func() {
 		availableProxies <- p
 	}()

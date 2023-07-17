@@ -56,3 +56,14 @@ func TestGetProxy(t *testing.T) {
 		t.Errorf("Error in port %v", first)
 	}
 }
+
+func TestReadd(t *testing.T) {
+	reAddedProxies = reAddedProxies[:0]
+
+	p := &Proxy{}
+	p.Readd()
+
+	if len(reAddedProxies) != 1 {
+		t.Error("We added only one proxy")
+	}
+}
