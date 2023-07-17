@@ -3,6 +3,7 @@ package biri
 import (
 	"fmt"
 	"log"
+	"math/rand"
 	"net/http"
 	"net/url"
 	"strings"
@@ -32,6 +33,7 @@ var Config = &config{
 var SkipProxies = []string{}
 
 var availableProxies = make(chan *Proxy, Config.numberAvailableProxies)
+var reAddedProxies = []Proxy{}
 var banProxy = make(chan string)
 var done = make(chan bool)
 
@@ -75,7 +77,17 @@ func ProxyStart() {
 
 // GetClient return client with proxy
 func GetClient() *Proxy {
-	return <-availableProxies
+	select {
+	case proxy := <-availableProxies:
+		return proxy
+	default:
+		if len(reAddedProxies) > 0 {
+			randomIndex := rand.Intn(len(reAddedProxies))
+			return &reAddedProxies[randomIndex]
+		} else {
+			return <-availableProxies
+		}
+	}
 }
 
 func getProxy() {
