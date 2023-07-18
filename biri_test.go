@@ -44,7 +44,35 @@ func TestGetClient(t *testing.T) {
 	}
 }
 
+func TestReadd(t *testing.T) {
+	reAddedProxies = reAddedProxies[:0]
+
+	p := &Proxy{}
+	p.Readd()
+
+	if len(reAddedProxies) != 1 {
+		t.Error("We added only one proxy")
+	}
+}
+
+func TestBanShouldCleanCache(t *testing.T) {
+	dummyProxy := Proxy{Info: "dummy"}
+	reAddedProxies = append(reAddedProxies, dummyProxy)
+	go dummyProxy.Ban()
+	banned := <-banProxy
+	if banned != dummyProxy.Info {
+		t.Error("Banned a other proxy")
+	}
+
+	for _, proxy := range reAddedProxies {
+		if proxy.Info == dummyProxy.Info {
+			t.Error(dummyProxy.Info, "should be banned")
+		}
+	}
+}
+
 func TestGetProxy(t *testing.T) {
+	Config.PingServer = "https://github.com"
 	go getProxy()
 
 	first := <-availableProxies
@@ -54,16 +82,5 @@ func TestGetProxy(t *testing.T) {
 
 	if !strings.Contains(first.Info, ":") {
 		t.Errorf("Error in port %v", first)
-	}
-}
-
-func TestReadd(t *testing.T) {
-	reAddedProxies = reAddedProxies[:0]
-
-	p := &Proxy{}
-	p.Readd()
-
-	if len(reAddedProxies) != 1 {
-		t.Error("We added only one proxy")
 	}
 }
