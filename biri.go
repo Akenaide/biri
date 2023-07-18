@@ -39,6 +39,12 @@ var banProxy = make(chan string)
 var done = make(chan bool)
 var timeout = 10
 
+func removeWithIndex(s []Proxy, index int) []Proxy {
+	ret := []Proxy{}
+	ret = append(ret, s[:index]...)
+	return append(ret, s[index+1:]...)
+}
+
 // Proxy handle proxy things
 type Proxy struct {
 	Info   string
@@ -55,6 +61,19 @@ func (p *Proxy) Readd() {
 
 // Ban proxy
 func (p *Proxy) Ban() {
+	log.Println("Ban", p.Info)
+	toBanIndex := -1
+	for index, proxy := range reAddedProxies {
+		if p.Info == proxy.Info {
+			log.Println("We found a banned proxy in reAddedProxies at:", index)
+			toBanIndex = index
+			break
+		}
+
+	}
+	if toBanIndex != -1 {
+		reAddedProxies = removeWithIndex(reAddedProxies, toBanIndex)
+	}
 	banProxy <- p.Info
 }
 
