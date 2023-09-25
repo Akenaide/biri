@@ -34,5 +34,7 @@ Here the basic default configuration:
     TickMinuteDuration:     3,
     numberAvailableProxies: 30,
     Verbose:                1,
+    Timeout:                10,
+    AnonymousLevel:         []string{"elite proxy", "transparent"},
   }
 ```

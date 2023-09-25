@@ -19,6 +19,8 @@ type config struct {
 	TickMinuteDuration     time.Duration
 	numberAvailableProxies int
 	Verbose                int
+	Timeout                int
+	AnonymousLevel         []string
 }
 
 // Config configuration
@@ -28,6 +30,8 @@ var Config = &config{
 	TickMinuteDuration:     3,
 	numberAvailableProxies: 30,
 	Verbose:                1,
+	Timeout:                10,
+	AnonymousLevel:         []string{"elite proxy", "transparent"},
 }
 
 // SkipProxies contains not working proxies rip
@@ -37,7 +41,6 @@ var availableProxies = make(chan *Proxy, Config.numberAvailableProxies)
 var reAddedProxies = []Proxy{}
 var banProxy = make(chan string)
 var done = make(chan bool)
-var timeout = 10
 
 func removeWithIndex(s []Proxy, index int) []Proxy {
 	ret := []Proxy{}
@@ -113,10 +116,8 @@ func GetClient() *Proxy {
 }
 
 func getProxy() {
-	if Config.Verbose > 0 {
-		log.Println("Get new proxies")
-	}
-	_, cancel := context.WithTimeout(context.Background(), time.Duration(timeout))
+	newProxy := 0
+	_, cancel := context.WithTimeout(context.Background(), time.Duration(Config.Timeout))
 	defer cancel()
 
 	response, errGet := http.Get(Config.proxyWebpage)
@@ -132,21 +133,27 @@ func getProxy() {
 	}
 
 	query.Find("table tr").Each(func(_ int, proxyLi *goquery.Selection) {
-		if strings.Contains(proxyLi.Text(), "elite proxy") {
-			if proxyLi.Children().Filter("td.hx").Text() == "yes" {
+		for _, anoLevel := range Config.AnonymousLevel {
+			if strings.Contains(proxyLi.Text(), anoLevel) {
+				if proxyLi.Children().Filter("td.hx").Text() == "yes" {
 
-				ip := proxyLi.Children().First()
-				res := fmt.Sprintf("%v:%v", ip.Text(), ip.Next().Text())
+					ip := proxyLi.Children().First()
+					res := fmt.Sprintf("%v:%v", ip.Text(), ip.Next().Text())
 
-				for _, val := range SkipProxies {
-					if res == val {
-						return
+					for _, val := range SkipProxies {
+						if res == val {
+							return
+						}
 					}
+					newProxy += 1
+					go basicTestProxy(res)
 				}
-				go basicTestProxy(res)
 			}
 		}
 	})
+	if Config.Verbose > 0 {
+		log.Printf("Get %v new proxies\n", newProxy)
+	}
 }
 
 func basicTestProxy(p string) {
@@ -158,7 +165,7 @@ func basicTestProxy(p string) {
 	proxy.Client = &http.Client{Transport: &http.Transport{
 		Proxy: http.ProxyURL(proxyURL),
 	},
-		Timeout: time.Duration(timeout) * time.Second,
+		Timeout: time.Duration(Config.Timeout) * time.Second,
 	}
 
 	_, errHTTP := proxy.Client.Get(Config.PingServer)
