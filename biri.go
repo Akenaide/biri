@@ -147,6 +147,8 @@ func getProxy() {
 					}
 					newProxy += 1
 					go basicTestProxy(res)
+					// Return here so we don't test and add the same proxy twice.
+					return
 				}
 			}
 		}
