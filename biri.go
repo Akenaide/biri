@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"log/slog"
 	"math/rand"
 	"net/http"
 	"net/url"
@@ -14,24 +15,24 @@ import (
 )
 
 type config struct {
+	// HttpProxyListGenerator generates a list of proxies to use.
+	// The returned strings must not have "http://" prepended.
+	HttpProxyListGenerator func() ([]string, error)
 	PingServer             string
-	proxyWebpage           string
 	TickMinuteDuration     time.Duration
 	numberAvailableProxies int
 	Verbose                int
 	Timeout                int
-	AnonymousLevel         []string
 }
 
 // Config configuration
 var Config = &config{
-	proxyWebpage:           "https://free-proxy-list.net/",
+	HttpProxyListGenerator: FreeProxyListExtractor,
 	PingServer:             "https://www.google.com/",
 	TickMinuteDuration:     3,
 	numberAvailableProxies: 30,
 	Verbose:                1,
 	Timeout:                10,
-	AnonymousLevel:         []string{"elite proxy", "transparent"},
 }
 
 // SkipProxies contains not working proxies rip
@@ -64,7 +65,7 @@ func (p *Proxy) Readd() {
 
 // Ban proxy
 func (p *Proxy) Ban() {
-	log.Println("Ban", p.Info)
+	slog.Debug(fmt.Sprintf("Ban %v", p.Info))
 	toBanIndex := -1
 	for index, proxy := range reAddedProxies {
 		if p.Info == proxy.Info {
@@ -115,25 +116,24 @@ func GetClient() *Proxy {
 	}
 }
 
-func getProxy() {
-	newProxy := 0
-	_, cancel := context.WithTimeout(context.Background(), time.Duration(Config.Timeout))
-	defer cancel()
-
-	response, errGet := http.Get(Config.proxyWebpage)
-	if errGet != nil {
+// Function to get proxies from  https://free-proxy-list.net/.
+func FreeProxyListExtractor() ([]string, error) {
+	response, err := http.Get("https://free-proxy-list.net/")
+	if err != nil {
 		log.Println("Error on get proxy")
-		return
+		return nil, fmt.Errorf("error getting website: %v", err)
 	}
 	defer response.Body.Close()
 
 	query, errParse := goquery.NewDocumentFromReader(response.Body)
 	if errParse != nil {
-		return
+		return nil, fmt.Errorf("error parsing response: %v", errParse)
 	}
 
+	anonymousLevel := []string{"elite proxy", "transparent"}
+	var proxies []string
 	query.Find("table tr").Each(func(_ int, proxyLi *goquery.Selection) {
-		for _, anoLevel := range Config.AnonymousLevel {
+		for _, anoLevel := range anonymousLevel {
 			if strings.Contains(proxyLi.Text(), anoLevel) {
 				if proxyLi.Children().Filter("td.hx").Text() == "yes" {
 
@@ -145,16 +145,37 @@ func getProxy() {
 							return
 						}
 					}
-					newProxy += 1
-					go basicTestProxy(res)
-					// Return here so we don't test and add the same proxy twice.
+					proxies = append(proxies, res)
+					// Return so we don't add the same proxy twice.
 					return
 				}
 			}
 		}
 	})
-	if Config.Verbose > 0 {
-		log.Printf("Get %v new proxies\n", newProxy)
+
+	slog.Info(fmt.Sprintf("Got %v new proxies\n", len(proxies)))
+
+	return proxies, nil
+}
+
+func getProxy() {
+	_, cancel := context.WithTimeout(context.Background(), time.Duration(Config.Timeout))
+	defer cancel()
+
+	proxies, err := Config.HttpProxyListGenerator()
+	if err != nil {
+		log.Printf("Error getting proxies: %v\n", err)
+		return
+	}
+
+proxyLoop:
+	for _, p := range proxies {
+		for _, val := range SkipProxies {
+			if p == val {
+				continue proxyLoop
+			}
+		}
+		go basicTestProxy(p)
 	}
 }
 
