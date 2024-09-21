@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"log/slog"
 	"math/rand"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -14,24 +16,24 @@ import (
 )
 
 type config struct {
+	// HttpProxyListGenerator generates a list of proxies to use.
+	// The returned strings must not have "http://" prepended.
+	HttpProxyListGenerator func() ([]string, error)
 	PingServer             string
-	proxyWebpage           string
 	TickMinuteDuration     time.Duration
 	numberAvailableProxies int
 	Verbose                int
 	Timeout                int
-	AnonymousLevel         []string
 }
 
 // Config configuration
 var Config = &config{
-	proxyWebpage:           "https://free-proxy-list.net/",
+	HttpProxyListGenerator: FreeProxyListExtractor,
 	PingServer:             "https://www.google.com/",
 	TickMinuteDuration:     3,
 	numberAvailableProxies: 30,
 	Verbose:                1,
 	Timeout:                10,
-	AnonymousLevel:         []string{"elite proxy", "transparent"},
 }
 
 // SkipProxies contains not working proxies rip
@@ -64,7 +66,7 @@ func (p *Proxy) Readd() {
 
 // Ban proxy
 func (p *Proxy) Ban() {
-	log.Println("Ban", p.Info)
+	slog.Debug(fmt.Sprintf("Ban %v", p.Info))
 	toBanIndex := -1
 	for index, proxy := range reAddedProxies {
 		if p.Info == proxy.Info {
@@ -115,25 +117,24 @@ func GetClient() *Proxy {
 	}
 }
 
-func getProxy() {
-	newProxy := 0
-	_, cancel := context.WithTimeout(context.Background(), time.Duration(Config.Timeout))
-	defer cancel()
-
-	response, errGet := http.Get(Config.proxyWebpage)
-	if errGet != nil {
+// FreeProxyListExtractor gets proxies from https://free-proxy-list.net/.
+func FreeProxyListExtractor() ([]string, error) {
+	response, err := http.Get("https://free-proxy-list.net/")
+	if err != nil {
 		log.Println("Error on get proxy")
-		return
+		return nil, fmt.Errorf("error getting website: %v", err)
 	}
 	defer response.Body.Close()
 
 	query, errParse := goquery.NewDocumentFromReader(response.Body)
 	if errParse != nil {
-		return
+		return nil, fmt.Errorf("error parsing response: %v", errParse)
 	}
 
+	anonymousLevel := []string{"elite proxy", "transparent"}
+	var proxies []string
 	query.Find("table tr").Each(func(_ int, proxyLi *goquery.Selection) {
-		for _, anoLevel := range Config.AnonymousLevel {
+		for _, anoLevel := range anonymousLevel {
 			if strings.Contains(proxyLi.Text(), anoLevel) {
 				if proxyLi.Children().Filter("td.hx").Text() == "yes" {
 
@@ -145,14 +146,60 @@ func getProxy() {
 							return
 						}
 					}
-					newProxy += 1
-					go basicTestProxy(res)
+					proxies = append(proxies, res)
+					// Return so we don't add the same proxy twice.
+					return
 				}
 			}
 		}
 	})
-	if Config.Verbose > 0 {
-		log.Printf("Get %v new proxies\n", newProxy)
+
+	slog.Info(fmt.Sprintf("Got %v new proxies", len(proxies)))
+
+	return proxies, nil
+}
+
+// ProxyScraperListExtractor gets proxies from https://github.com/ProxyScraper/ProxyScraper/tree/main's http list.
+func ProxyScraperListExtractor() ([]string, error) {
+	resp, err := http.Get("https://raw.githubusercontent.com/ProxyScraper/ProxyScraper/refs/heads/main/http.txt")
+	if err != nil {
+		return nil, fmt.Errorf("error getting proxy list: %v", err)
+	}
+	defer resp.Body.Close()
+
+	doc, err := goquery.NewDocumentFromReader(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing proxy list: %v", err)
+	}
+
+	proxyRE, err := regexp.Compile(`(\d+\.\d+\.\d+\.\d+:\d+)`)
+	if err != nil {
+		return nil, fmt.Errorf("issue with the proxy regex: %v", err)
+	}
+	matches := proxyRE.FindAllString(doc.Text(), -1)
+
+	slog.Info(fmt.Sprintf("Got %d proxies", len(matches)))
+	return matches, nil
+}
+
+func getProxy() {
+	_, cancel := context.WithTimeout(context.Background(), time.Duration(Config.Timeout))
+	defer cancel()
+
+	proxies, err := Config.HttpProxyListGenerator()
+	if err != nil {
+		log.Printf("Error getting proxies: %v\n", err)
+		return
+	}
+
+proxyLoop:
+	for _, p := range proxies {
+		for _, val := range SkipProxies {
+			if p == val {
+				continue proxyLoop
+			}
+		}
+		go basicTestProxy(p)
 	}
 }
 
