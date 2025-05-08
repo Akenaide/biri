@@ -19,7 +19,7 @@ type config struct {
 	TickMinuteDuration     time.Duration
 	numberAvailableProxies int
 	Verbose                int
-	Timeout                int
+	Timeout                time.Duration
 	AnonymousLevel         []string
 }
 
@@ -30,7 +30,7 @@ var Config = &config{
 	TickMinuteDuration:     3,
 	numberAvailableProxies: 30,
 	Verbose:                1,
-	Timeout:                10,
+	Timeout:                10 * time.Second,
 	AnonymousLevel:         []string{"elite proxy", "transparent"},
 }
 
@@ -117,7 +117,7 @@ func GetClient() *Proxy {
 
 func getProxy() {
 	newProxy := 0
-	_, cancel := context.WithTimeout(context.Background(), time.Duration(Config.Timeout))
+	_, cancel := context.WithTimeout(context.Background(), Config.Timeout)
 	defer cancel()
 
 	response, errGet := http.Get(Config.proxyWebpage)
@@ -165,7 +165,7 @@ func basicTestProxy(p string) {
 	proxy.Client = &http.Client{Transport: &http.Transport{
 		Proxy: http.ProxyURL(proxyURL),
 	},
-		Timeout: time.Duration(Config.Timeout) * time.Second,
+		Timeout: Config.Timeout,
 	}
 
 	_, errHTTP := proxy.Client.Get(Config.PingServer)
